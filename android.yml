@@ -1,0 +1,51 @@
+name: Build Android APK
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+    paths:
+      - "app/**"
+      - "*.gradle.kts"
+      - "gradle.properties"
+      - ".github/workflows/android.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+      - name: Build debug APK
+        run: gradle --no-daemon assembleDebug
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: XYRO-HOOK-DETECTOR-PRO-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
+      - name: Publish GitHub Release
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="build-${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG" app/build/outputs/apk/debug/app-debug.apk             --repo "$GITHUB_REPOSITORY"             --title "XYRO HOOK DETECTOR PRO $TAG"             --notes "Automated debug APK build. Inspect source and install only if you trust this build."             || gh release upload "$TAG" app/build/outputs/apk/debug/app-debug.apk --repo "$GITHUB_REPOSITORY" --clobber
+      - name: Send APK to Telegram (optional)
+        if: ${{ secrets.TELEGRAM_BOT_TOKEN != '' && secrets.TELEGRAM_CHAT_ID != '' }}
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          curl --fail --silent --show-error             -F "chat_id=${CHAT_ID}"             -F "document=@app/build/outputs/apk/debug/app-debug.apk"             -F "caption=XYRO HOOK DETECTOR PRO APK — automated build. Static scanner only."             "https://api.telegram.org/bot${BOT_TOKEN}/sendDocument"
